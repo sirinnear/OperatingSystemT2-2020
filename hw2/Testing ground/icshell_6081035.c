@@ -98,21 +98,22 @@ int ampersandBG(char** cmdarr, int* n){
     }
     return 1;
 }
-int jobs_cmd(char** cmdarr, int* n){
+int jobs_cmd(char** cmdarr, int* n, job** jobs){
     if(n!=0){
-      if(strcmp(cmdarr[0],"jobs")==0){
-            printf("checking jobs %d\n", *n);
+        if(strcmp(cmdarr[0],"jobs")==0){
+            printf("checking jobs\n");
+            jobs_show(*jobs);
             return 0;
-    }  
-    }
-    
+        }  
+    } 
     return 1;
 }
 void jobs_show(job *first){
-    job *p;
-    for (p = first->next; p; p = p->next)
-    if (p)
-    printf("%s\n",p->command);
+    int count = 1;
+    if(first){
+        for (job* j = first; j; j = j->next) printf("[%d] %d %s\n", count++, j->first_process->pid, j->command);
+    }
+
     //When user type "jobs", we must know if there is a job or not?
     //just make a queue of processes first, make sure we know if it is available
     //we are not pipelining
@@ -142,6 +143,9 @@ void jobs_show(job *first){
 //     //we send sigkill to every job, hoping that it kills the jobs
 //     //then we exit with code 0
 // }
+void bgdone(){
+    wait(NULL);
+}
 
 int executeCommand(char* cmd, int status,int* ex, job** jobs, job* jfg){
     int *n = realloc(NULL, sizeof(int));
@@ -168,7 +172,7 @@ int executeCommand(char* cmd, int status,int* ex, job** jobs, job* jfg){
                 free(n);
                 exit(0);
             } 
-            if(jobs_cmd(givencmd,n)==0){
+            if(jobs_cmd(givencmd,n, jobs)==0){
                 for (int i = 0; i < *n; i++){ free(givencmd[i]);}
                 free(givencmd);
                 free(n);
@@ -183,7 +187,7 @@ int executeCommand(char* cmd, int status,int* ex, job** jobs, job* jfg){
             exit(9);
     } else {
             process *mychild = initpro(pid, givencmd, status);
-            // job_push(jobs, cmd, getpgid(getpid()), mychild);
+            job_push(jobs, cmd, getpgid(getpid()), mychild);
             printf("[P] I'm waiting for my child\n");
             
             if(bg==1){
@@ -196,6 +200,7 @@ int executeCommand(char* cmd, int status,int* ex, job** jobs, job* jfg){
             }
             else{
                 waitpid(pid, &status, WNOHANG);
+                signal(SIGCHLD, bgdone);
                 if (WIFEXITED(status))  {
                 int exit_status = WEXITSTATUS(status);
                 *ex = exit_status;         

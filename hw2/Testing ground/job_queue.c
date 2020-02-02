@@ -49,10 +49,17 @@ int job_push(job** j, char* cmd, pid_t pgid, process* childprocess){
     newjob->first_process = childprocess;
 
     if(!*j){
-        printf("*****************new job*****************\n");
+        printf("*****************first job*****************\n");
         *j = newjob;
     }else{
-        (*j)->next = newjob;
+        printf("*****************new job*****************\n");
+        job* ji = *j;
+        for (ji = *j; ji; ji = ji->next){
+          if(!ji->next){
+            ji->next = newjob;
+            return 1;
+          } 
+        } 
     }
 }
 
