@@ -12,33 +12,33 @@
 
 // int ORed(char *argv[]){
 
-//      int in;
-//      int out;
-//      size_t got;
-//      char buffer[1024];
+    //  int in;
+    //  int out;
+    //  size_t got;
+    //  char buffer[1024];
 
-//      in = open (argv[0], O_RDONLY);
-//      out = open (argv[1], O_TRUNC | O_CREAT | O_WRONLY, 0666);
+    //  in = open (argv[0], O_RDONLY);
+    //  out = open (argv[1], O_TRUNC | O_CREAT | O_WRONLY, 0666);
 
-//      if ((in <= 0) || (out <= 0))
-//      {
-//        fprintf (stderr, "Couldn't open a file\n");
-//        exit (errno);
-//      }
+    //  if ((in <= 0) || (out <= 0))
+    //  {
+    //    fprintf (stderr, "Couldn't open a file\n");
+    //    exit (errno);
+    //  }
 
-//      dup2 (in, 0);
-//      dup2 (out, 1);   
+    //  dup2 (in, 0);
+    //  dup2 (out, 1);   
 
-//      close (in);
-//      close (out);
+    //  close (in);
+    //  close (out);
 
-//      while (1)
-//      {
-//        got = fread (buffer, 1, 1024, stdin);  
-//        if (got <=0) break;
-//        fwrite (buffer, got, 1, stdout);
-//        printf("SUCK MY DICK00");
-//      }
+    //  while (1)
+    //  {
+    //    got = fread (buffer, 1, 1024, stdin);  
+    //    if (got <=0) break;
+    //    fwrite (buffer, got, 1, stdout);
+    //    printf("SUCK MY DICK00");
+    //  }
 // }
 
 char *inputString(FILE* fp, size_t size){
@@ -126,7 +126,19 @@ int outputRed(char** cmdarr, int* n){
     for (i = 0; i < *n; i++)
     {
         if(strcmp(cmdarr[i],">")==0){
-            printf("let's redirect at %d\n", i);
+            printf("let's redirect output at %d\n", i);
+            return i;
+        }
+    }
+    return 0;
+}
+//input occur before output
+int inputRed(char** cmdarr, int* n){
+    int i;
+    for (i = 0; i < *n; i++)
+    {
+        if(strcmp(cmdarr[i],"<")==0){
+            printf("let's redirect input at %d\n", i);
             return i;
         }
     }
@@ -196,7 +208,8 @@ int executeCommand(char* cmd, int status,int* ex, job** jobs, job* jfg){
     char **givencmd = stringTokenizer(cmd,n);
     int bg = ampersandBG(givencmd, n);
     char** redicmd;
-    int redirect = outputRed(givencmd,n);
+    int redirecto = outputRed(givencmd,n);    
+    int redirecti = inputRed(givencmd,n);
     //execute normally
     pid_t pid = fork();
     setpgid(pid, getppid());
@@ -223,23 +236,49 @@ int executeCommand(char* cmd, int status,int* ex, job** jobs, job* jfg){
                 free(n);
                 exit(0);
             }
-            if((*n-redirect)>1 && redirect!=0){
+            if((*n-redirecti)>1 && redirecti!=0){
+                redicmd = malloc(sizeof(char*)*(redirecti+1));
+                    for (int i = 0; i < redirecti; i++){ 
+                        redicmd[i] = givencmd[i];
+                    }
+                redicmd[redirecti] = NULL;
+                
+                int in;
+                size_t got;
+                char buffer[1024];
+
+                in = open(givencmd[redirecti+1], O_RDONLY);
+
+                if ((in <= 0))
+                {
+                    fprintf (stderr, "Couldn't open a file\n");
+                    exit (errno);
+                }
+                dup2 (in, 0);
+                close (in);
+                while (1)
+                {
+                    execvp(redicmd[0], redicmd);
+                    got = fread (buffer, 1, 1024, stdin);  
+                    if (got <=0) break;
+                }
+                
+            }else if((*n-redirecto)>1 && redirecto!=0){
                     int out;
-                    out = open (givencmd[redirect+1], O_TRUNC | O_CREAT | O_WRONLY, 0666);
+                    out = open (givencmd[redirecto+1], O_TRUNC | O_CREAT | O_WRONLY, 0666);
                     if ((out <= 0))
                     {
                     fprintf (stderr, "Couldn't open a file\n");
                     exit (errno);
                     }
-                    redicmd = malloc(sizeof(char*)*(redirect+1));
-                    for (int i = 0; i < redirect; i++){ 
+                    redicmd = malloc(sizeof(char*)*(redirecto+1));
+                    for (int i = 0; i < redirecto; i++){ 
                         redicmd[i] = givencmd[i];
-                        printf("%s\n",redicmd[i]);
                     }
-                    redicmd[redirect] = NULL;
+                    redicmd[redirecto] = NULL;
                     dup2 (out, 1);   
                     close (out);
-
+                    if(fork()==0)
                     execvp(redicmd[0], redicmd);
                     // printf("ICSH: command not found: %s\n", cmd);
                     // free(redicmd);
@@ -290,6 +329,28 @@ int executeCommand(char* cmd, int status,int* ex, job** jobs, job* jfg){
     //     }
     //     free(redicmd);
     // } 
+
+    
+    // if((*n-redirecti)>1 && redirecti!=0){
+    //     int in;
+    //     size_t got;
+    //     char buffer[1024];
+
+    //     in = open(givencmd[redirecti+1], O_RDONLY);
+
+    //     if ((in <= 0))
+    //     {
+    //         fprintf (stderr, "Couldn't open a file\n");
+    //         exit (errno);
+    //     }
+    //     dup2 (in, 0);
+    //     close (in);
+    //     while (1)
+    //     {
+    //         got = fread (buffer, 1, 1024, stdin);  
+    //         if (got <=0) break;
+    //     }
+    // }
     for (int i = 0; i < *n; i++){ free(givencmd[i]);}
     free(givencmd);    
     free(n);
