@@ -98,7 +98,16 @@ int ampersandBG(char** cmdarr, int* n){
     }
     return 1;
 }
-
+int jobs_cmd(char** cmdarr, int* n){
+    if(n!=0){
+      if(strcmp(cmdarr[0],"jobs")==0){
+            printf("checking jobs %d\n", *n);
+            return 0;
+    }  
+    }
+    
+    return 1;
+}
 void jobs_show(job *first){
     job *p;
     for (p = first->next; p; p = p->next)
@@ -134,13 +143,10 @@ void jobs_show(job *first){
 //     //then we exit with code 0
 // }
 
-int executeCommand(char* cmd, int status,int* ex){
+int executeCommand(char* cmd, int status,int* ex, job** jobs, job* jfg){
     int *n = realloc(NULL, sizeof(int));
     char **givencmd = stringTokenizer(cmd,n);
-    if(ampersandBG(givencmd, n)==0){
-        //go bg way
-    };
-    if(exitStatus(givencmd, n, ex)==0) return 0;
+    int bg = ampersandBG(givencmd, n);
     
     //execute normally
     pid_t pid = fork();
@@ -150,13 +156,24 @@ int executeCommand(char* cmd, int status,int* ex){
             printf("Error, cannot fork\n");
     } else if (pid == 0) {
             printf("[C] I am the child\n");
+
             //gotta work with signal
             signal(SIGTSTP, SIGTSTP);
             signal(SIGCONT, SIGCONT);
             signal(SIGINT, SIGINT);
-            // for (int i = 0; i < *n; i++){ 
-            //     printf("%s\n", givencmd[i]);
-            // }
+
+            if(exitStatus(givencmd, n, ex)==0){
+                for (int i = 0; i < *n; i++){ free(givencmd[i]);}
+                free(givencmd);
+                free(n);
+                exit(0);
+            } 
+            if(jobs_cmd(givencmd,n)==0){
+                for (int i = 0; i < *n; i++){ free(givencmd[i]);}
+                free(givencmd);
+                free(n);
+                exit(0);
+            } 
             execvp(givencmd[0], givencmd);
 
             printf("ICSH: command not found: %s\n", cmd);
@@ -165,15 +182,28 @@ int executeCommand(char* cmd, int status,int* ex){
             free(n);
             exit(9);
     } else {
+            process *mychild = initpro(pid, givencmd, status);
+            // job_push(jobs, cmd, getpgid(getpid()), mychild);
             printf("[P] I'm waiting for my child\n");
-            wait(&status);
-            if (WIFEXITED(status))  {
+            
+            if(bg==1){
+                waitpid(pid, &status, NULL);
+                if (WIFEXITED(status))  {
                 int exit_status = WEXITSTATUS(status);
                 *ex = exit_status;         
                 printf("Exit status of the child was %d\n", exit_status); 
+                }
+            }
+            else{
+                waitpid(pid, &status, WNOHANG);
+                if (WIFEXITED(status))  {
+                int exit_status = WEXITSTATUS(status);
+                *ex = exit_status;         
+                printf("FROM BG: Exit status of the child was %d\n", exit_status); 
+            }
         }
+            
     }
-    
     for (int i = 0; i < *n; i++){ free(givencmd[i]);}
     free(givencmd);    
     free(n);
@@ -183,15 +213,17 @@ int main(){
     int status; //exit?
     int *exitNo = malloc(sizeof(int));
     char *input;
+    job *jobs;
+    job *job_fg;
     // char *path = strdup(getenv("PATH"));
     // printf(path);
     // free(path);
-    signal(SIGTSTP, SIG_IGN);
-    signal(SIGINT, SIG_IGN);
+    signal(SIGTSTP, SIG_IGN); //fg is paused
+    signal(SIGINT, SIG_IGN); //fg is gone
     while(1){
         printf("ICSH@6081035$>");
         input = inputString(stdin, 10); //a dynamic array
-        executeCommand(input,status, exitNo);
+        executeCommand(input,status, exitNo, &jobs, job_fg);
         free(input);
     }
     free(exitNo);

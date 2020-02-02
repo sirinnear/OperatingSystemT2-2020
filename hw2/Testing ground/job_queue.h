@@ -42,28 +42,30 @@ typedef struct job
 job * find_job (pid_t pgid);
 int job_is_stopped (job *j);
 int job_is_completed (job *j);
+int job_push(job** j, char* cmd, pid_t pgid, process* childprocess);
 
+process* initpro(pid_t pid, char** argv, int status);
 /* Push a word to the back of this queue
  * You must keep a *COPY* of the word.
  * If q is NULL, allocate space for it here
  */
-void push(Queue **q, char *word);
+// void push(Queue **q, char *word);
 
-/* Returns the data at the front of the queue
- * and remove it from the queue as well.
- * If q is empty, return NULL
- */
-char *pop(Queue *q);
+// /* Returns the data at the front of the queue
+//  * and remove it from the queue as well.
+//  * If q is empty, return NULL
+//  */
+// char *pop(Queue *q);
 
-/* Checks if the queue is empty */
-int isEmpty(Queue *q);
+// /* Checks if the queue is empty */
+// int isEmpty(Queue *q);
 
-/* Prints out the current queue, front to back.
- * If the queue is empty, prints out "No items"
- */
-void print(Queue *q);
+// /* Prints out the current queue, front to back.
+//  * If the queue is empty, prints out "No items"
+//  */
+// void print(Queue *q);
 
-/* Deallocates all items in the queue */
-void delete(Queue *q);
+// /* Deallocates all items in the queue */
+// void delete(Queue *q);
 
 #endif
