@@ -7,7 +7,39 @@
 #include<unistd.h>
 #include<ctype.h>
 #include"job_queue.c"
+#include <errno.h>
+#include <fcntl.h>
 
+// int ORed(char *argv[]){
+
+//      int in;
+//      int out;
+//      size_t got;
+//      char buffer[1024];
+
+//      in = open (argv[0], O_RDONLY);
+//      out = open (argv[1], O_TRUNC | O_CREAT | O_WRONLY, 0666);
+
+//      if ((in <= 0) || (out <= 0))
+//      {
+//        fprintf (stderr, "Couldn't open a file\n");
+//        exit (errno);
+//      }
+
+//      dup2 (in, 0);
+//      dup2 (out, 1);   
+
+//      close (in);
+//      close (out);
+
+//      while (1)
+//      {
+//        got = fread (buffer, 1, 1024, stdin);  
+//        if (got <=0) break;
+//        fwrite (buffer, got, 1, stdout);
+//        printf("SUCK MY DICK00");
+//      }
+// }
 
 char *inputString(FILE* fp, size_t size){
 //The size is extended by the input with the value of the provisional
@@ -88,6 +120,18 @@ int exitStatus(char** cmdarr, int* n, int* ex){
     }
     return 1;
 }
+// ./idk > know > no
+int outputRed(char** cmdarr, int* n){
+    int i;
+    for (i = 0; i < *n; i++)
+    {
+        if(strcmp(cmdarr[i],">")==0){
+            printf("let's redirect at %d\n", i);
+            return i;
+        }
+    }
+    return 0;
+}
 int ampersandBG(char** cmdarr, int* n){
     if(*n>=2){
         if(strcmp(cmdarr[*n-1],"&")==0){
@@ -101,7 +145,7 @@ int ampersandBG(char** cmdarr, int* n){
 int jobs_cmd(char** cmdarr, int* n, job** jobs){
     if(n!=0){
         if(strcmp(cmdarr[0],"jobs")==0){
-            // printf("checking jobs\n");
+            printf("checking jobs\n");
             jobs_show(*jobs);
             return 0;
         }  
@@ -111,7 +155,7 @@ int jobs_cmd(char** cmdarr, int* n, job** jobs){
 void jobs_show(job *first){
     int count = 1;
     if(first){
-        for (job* j = first; j; j = j->next) printf("[%d] %d\n", count++, j->first_process->pid);
+        for (job* j = first; j; j = j->next) printf("[%d] %d %s\n", count++, j->first_process->pid, j->command);
     }
 
     //When user type "jobs", we must know if there is a job or not?
@@ -151,15 +195,16 @@ int executeCommand(char* cmd, int status,int* ex, job** jobs, job* jfg){
     int *n = realloc(NULL, sizeof(int));
     char **givencmd = stringTokenizer(cmd,n);
     int bg = ampersandBG(givencmd, n);
-    
+    char** redicmd;
+    int redirect = outputRed(givencmd,n);
     //execute normally
     pid_t pid = fork();
     setpgid(pid, getppid());
-    // printf("My pgid is %d, my pid is %d\n", getpgid(getpid()), getpid());
+    printf("My pgid is %d, my pid is %d\n", getpgid(getpid()), getpid());
     if (pid < -1) {
             printf("Error, cannot fork\n");
     } else if (pid == 0) {
-            // printf("[C] I am the child\n");
+            printf("[C] I am the child\n");
 
             //gotta work with signal
             signal(SIGTSTP, SIGTSTP);
@@ -177,9 +222,38 @@ int executeCommand(char* cmd, int status,int* ex, job** jobs, job* jfg){
                 free(givencmd);
                 free(n);
                 exit(0);
-            } 
-            execvp(givencmd[0], givencmd);
+            }
+            if((*n-redirect)>1 && redirect!=0){
+                    int out;
+                    out = open (givencmd[redirect+1], O_TRUNC | O_CREAT | O_WRONLY, 0666);
+                    if ((out <= 0))
+                    {
+                    fprintf (stderr, "Couldn't open a file\n");
+                    exit (errno);
+                    }
+                    redicmd = malloc(sizeof(char*)*(redirect+1));
+                    for (int i = 0; i < redirect; i++){ 
+                        redicmd[i] = givencmd[i];
+                        printf("%s\n",redicmd[i]);
+                    }
+                    redicmd[redirect] = NULL;
+                    dup2 (out, 1);   
+                    close (out);
 
+                    execvp(redicmd[0], redicmd);
+                    // printf("ICSH: command not found: %s\n", cmd);
+                    // free(redicmd);
+                    // for (int i = 0; i < *n; i++){ free(givencmd[i]);}
+                    // free(givencmd);
+                    // free(n);
+                    // exit(9);
+                
+            }else{
+                printf("NO REDIRECT\n");
+
+                execvp(givencmd[0], givencmd); 
+            }
+            
             printf("ICSH: command not found: %s\n", cmd);
             for (int i = 0; i < *n; i++){ free(givencmd[i]);}
             free(givencmd);
@@ -188,28 +262,34 @@ int executeCommand(char* cmd, int status,int* ex, job** jobs, job* jfg){
     } else {
             process *mychild = initpro(pid, givencmd, status);
             job_push(jobs, cmd, getpgid(getpid()), mychild);
-            // printf("[P] I'm waiting for my child\n");
+            printf("[P] I'm waiting for my child\n");
             
             if(bg==1){
                 waitpid(pid, &status, NULL);
                 if (WIFEXITED(status))  {
                 int exit_status = WEXITSTATUS(status);
                 *ex = exit_status;         
-                // printf("Exit status of the child was %d\n", exit_status); 
+                printf("Exit status of the child was %d\n", exit_status); 
                 }
             }
             else{
                 jobs_show(*jobs);
-                waitpid(0, &status, WNOHANG);
+                waitpid(pid, &status, WNOHANG);
                 signal(SIGCHLD, bgdone);
                 if (WIFEXITED(status))  {
                 int exit_status = WEXITSTATUS(status);
                 *ex = exit_status;         
-                // printf("FROM BG: Exit status of the child was %d\n", exit_status); 
+                printf("FROM BG: Exit status of the child was %d\n", exit_status); 
             }
         }
-            
     }
+    
+    // if((*n-redirect)>1 && redirect!=0){
+    //     for (int i = 0; i < redirect; i++){ 
+    //         free(redicmd[i]);
+    //     }
+    //     free(redicmd);
+    // } 
     for (int i = 0; i < *n; i++){ free(givencmd[i]);}
     free(givencmd);    
     free(n);
