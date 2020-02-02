@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "job_queue.h": "c",
+        "types.h": "c"
+    }
+}
