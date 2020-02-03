@@ -1,0 +1,15 @@
+total 108
+drwxr-xr-x 3 parmcoder parmcoder  4096 ก.พ.   3 03:15 .
+drwxr-xr-x 7 parmcoder parmcoder  4096 ก.พ.   3 03:14 ..
+-rw-r--r-- 1 parmcoder parmcoder     0 ก.พ.   3 03:15 ckr
+-rw-r--r-- 1 parmcoder parmcoder 12755 ก.พ.   3 01:47 clean
+-rw-r--r-- 1 parmcoder parmcoder    10 ก.พ.   3 01:56 dummy
+-rwxr-xr-x 1 parmcoder parmcoder 18240 ก.พ.   3 03:15 icsh6t
+-rw-r--r-- 1 parmcoder parmcoder 10619 ก.พ.   3 03:11 icshell_6081035.c
+-rw-r--r-- 1 parmcoder parmcoder   723 ก.พ.   3 00:30 iore.c
+-rwxr-xr-x 1 parmcoder parmcoder  8792 ก.พ.   3 00:30 iotest
+-rw-r--r-- 1 parmcoder parmcoder  4016 ก.พ.   2 23:21 job_queue.c
+-rw-r--r-- 1 parmcoder parmcoder  1947 ก.พ.   2 21:52 job_queue.h
+-rw-r--r-- 1 parmcoder parmcoder   860 ก.พ.   3 02:52 shit
+-rwxr-xr-x 1 parmcoder parmcoder 12872 ก.พ.   3 03:14 vert_hist
+drwxr-xr-x 2 parmcoder parmcoder  4096 ก.พ.   2 23:46 .vscode

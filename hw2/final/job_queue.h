@@ -20,11 +20,9 @@ typedef struct queue_struct Queue;
 
 typedef struct process
 {
-  int argc;
+  int* argc;
   char **argv;                /* for exec */
   pid_t pid;                  /* process ID */
-  char completed;             /* true if process has completed */
-  char stopped;               /* true if process has stopped */
   int status;                 /* reported status value */
 } process;
 
@@ -32,7 +30,6 @@ typedef struct process
 typedef struct job
 {
   int id;                     /* what id*/
-  struct job *next;           /* next active job */
   char *command;              /* command line, used for messages */
   process *first_process;     /* list of processes in this job */
   pid_t pgid;                 /* process group ID */
@@ -52,7 +49,7 @@ int set_process_status(int pid, int status);
 int set_job_status(int id, int status);
 int wait_for_pid(int pid);
 int wait_for_job(int id);
-job* cmd_to_job(char* input);
+job* cmd_to_job(char* input, int* counter);
 
 
 

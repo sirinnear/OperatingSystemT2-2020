@@ -6,9 +6,22 @@
 #include<sys/wait.h>
 #include<unistd.h>
 #include<ctype.h>
-#include"job_queue.c"
+#include"job_queue.h"
 #include <errno.h>
 #include <fcntl.h>
+
+#define JOBSIZE 20
+job *jobs[20];
+int *exitNo;
+job fgj;
+
+const char* STATUS_STRING[] = {
+    "running",
+    "done",
+    "suspended",
+    "continued",
+    "terminated"
+};
 
 char *inputString(FILE* fp, size_t size){
 //The size is extended by the input with the value of the provisional
@@ -75,12 +88,216 @@ char** stringTokenizer(char* string, int* k){
     *k = argv;
     return tokens;
 }
-int exitStatus(char** cmdarr, int* n, int* ex){
+
+process *initpro(char* commands){
+    process *newprocess = malloc(sizeof(process));
+    int* count = malloc(sizeof(int));
+    newprocess->argv = stringTokenizer(commands,count);
+    newprocess->argc = *count;
+    newprocess->completed = 1;
+    newprocess->pid = -1;
+    newprocess->stopped = 1;
+    newprocess->status = 0;
+    return newprocess;
+}
+
+int get_job_id_by_pid(int pid) {
+    int i;
+    process *proc;
+
+    for (i = 1; i <= JOBSIZE; i++) {
+        if (jobs[i] != NULL) {
+            proc = jobs[i]->first_process;
+                if (proc->pid == pid) {
+                    return i;
+                }
+            }
+        }
+
+    return -1;
+}
+
+job* get_job_by_id(int id) {
+    if (id > JOBSIZE) {
+        return NULL;
+    }
+
+    return jobs[id];
+}
+
+int get_pgid_by_job_id(int id) {
+    struct job *job = get_job_by_id(id);
+
+    if (job == NULL) {
+        return -1;
+    }
+
+    return job->pgid;
+}
+
+int get_next_job_id() {
+    int i;
+
+    for (i = 1; i <= JOBSIZE; i++) {
+        if (jobs[i] == NULL) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+int print_processes_of_job(int id) {
+    if (id > JOBSIZE || jobs[id] == NULL) {
+        return -1;
+    }
+    printf("[%d]", id);
+
+    process *proc;
+    proc = jobs[id]->first_process;        
+    printf(" %d\n", proc->pid);
+    return 0;
+}
+
+int print_job_status(int id) {
+    if (id > JOBSIZE || jobs[id] == NULL) {
+        return -1;
+    }
+
+    printf("[%d]", id);
+
+    process *proc;
+    proc = jobs[id]->first_process;
+    printf("\t%d\t%s\t%s\n", proc->pid,
+            STATUS_STRING[proc->status], jobs[id]->command);
+    return 0;
+}
+
+int release_job(int id) {
+    if (id > JOBSIZE || jobs[id] == NULL) {
+        return -1;
+    }
+    job *job = jobs[id];
+    process *proc;
+    proc = job->first_process;
+    free(proc);
+    free(job->command);
+    free(job);
+    return 0;
+}
+
+int insert_job(job *job) {
+    int id = get_next_job_id();
+
+    if (id < 0) {
+        return -1;
+    }
+    job->id = id;
+    jobs[id] = job;
+    return id;
+}
+
+int remove_job(int id) {
+    if (id > JOBSIZE || jobs[id] == NULL) {
+        return -1;
+    }
+
+    release_job(id);
+    jobs[id] = NULL;
+
+    return 0;
+}
+
+int is_job_completed(int id) {
+    if (id > JOBSIZE || jobs[id] == NULL) {
+        return 0;
+    }
+
+    struct process *proc;
+    proc = jobs[id]->first_process;
+    if (proc->completed) {
+        return proc->completed;
+    }
+
+    return 1;
+}
+
+int set_process_status(int pid, int status) {
+    int i;
+    process *proc;
+    for (i = 1; i <= JOBSIZE; i++) {
+        if (jobs[i] == NULL) {
+            continue;
+        }
+        proc = jobs[i]->first_process; 
+        if (proc->pid == pid) {
+            proc->status = status;
+            return 0;
+        }
+        
+    }
+    return -1;
+}
+
+int set_job_status(int id, int status) {
+    if (id > JOBSIZE || jobs[id] == NULL) {
+        return -1;
+    }
+    int i;
+    struct process *proc;
+
+    proc = jobs[id]->first_process;
+    if (proc->status != 1) {
+        proc->status = status;
+        if(proc->status == 1) proc->completed = 0;
+        if(proc->status == 4) proc->stopped = 0;
+    }
+    return 0;
+}
+
+int wait_for_pid(int pid) {
+    int status = 0;
+
+    waitpid(pid, &status, WUNTRACED);
+    if (WIFEXITED(status)) {
+        set_process_status(pid, 1);
+    } else if (WIFSIGNALED(status)) {
+        set_process_status(pid, 4);
+    } else if (WSTOPSIG(status)) {
+        status = -1;
+        set_process_status(pid, 2);
+    }
+
+    return status;
+}
+
+int wait_for_job(int id) {
+    if (id > JOBSIZE || jobs[id] == NULL) {
+        return -1;
+    }
+
+    int wait_pid = -1, wait_count = 0;
+    int status = 0;
+
+    if (WIFEXITED(status)) {
+        set_process_status(wait_pid, 1);
+    } else if (WIFSIGNALED(status)) {
+        set_process_status(wait_pid, 4);
+    } else if (WSTOPSIG(status)) {
+        status = -1;
+        set_process_status(wait_pid, 2);
+        print_job_status(id);
+    }
+
+    return status;
+}
+
+int exitStatus(char** cmdarr,int n, int* ex){
     if(strcmp(cmdarr[0],"echo")==0){
-        if(*n>=2){
+        if(n>=2){
             if(strcmp(cmdarr[1],"$?")==0){
                 printf("%d\n", *ex);
-                for (int i = 0; i < *n; i++){ free(cmdarr[i]);}
+                for (int i = 0; i < n; i++){ free(cmdarr[i]);}
                 free(cmdarr);
                 free(n);
                 return 0;
@@ -90,9 +307,9 @@ int exitStatus(char** cmdarr, int* n, int* ex){
     return 1;
 }
 // ./idk > know > no
-int outputRed(char** cmdarr, int* n){
+int outputRed(char** cmdarr, int n){
     int i;
-    for (i = 0; i < *n; i++)
+    for (i = 0; i < n; i++)
     {
         if(strcmp(cmdarr[i],">")==0){
             printf("let's redirect output at %d\n", i);
@@ -102,9 +319,9 @@ int outputRed(char** cmdarr, int* n){
     return 0;
 }
 //input occur before output
-int inputRed(char** cmdarr, int* n){
+int inputRed(char** cmdarr, int n){
     int i;
-    for (i = 0; i < *n; i++)
+    for (i = 0; i < n; i++)
     {
         if(strcmp(cmdarr[i],"<")==0){
             printf("let's redirect input at %d\n", i);
@@ -113,103 +330,219 @@ int inputRed(char** cmdarr, int* n){
     }
     return 0;
 }
-int ampersandBG(char** cmdarr, int* n){
-    if(*n>=2){
-        if(strcmp(cmdarr[*n-1],"&")==0){
-            printf("running in background %d\n", *n);
-            cmdarr[*n-1] = NULL;  
+int ampersandBG(char** cmdarr, int n){
+    if(n>=2){
+        if(strcmp(cmdarr[n-1],"&")==0){
+            printf("running in background %d\n", n);
+            cmdarr[n-1] = NULL;  
             return 0;
         } 
     }
     return 1;
 }
-int jobs_cmd(char** cmdarr, int* n, job** jobs){
+int jobs_cmd(char** cmdarr, int n){
     if(n!=0){
         if(strcmp(cmdarr[0],"jobs")==0){
-            printf("checking jobs\n");
-            jobs_show(*jobs);
+            for (int i = 0; i < JOBSIZE; i++)
+                if(jobs[i]){
+                    print_job_status(i);
+                }
+            }
             return 0;
         }  
-    } 
+    
     return 1;
 }
-void jobs_show(job *first){
-    int count = 1;
-    if(first){
-        for (job* j = first; j; j = j->next) printf("[%d] %d %s\n", count++, j->first_process->pid, j->command);
+int bg_cmd(char** cmdarr, int n){
+    if(n>2){
+        if(strcmp(cmdarr[0],"bg")==0){
+            pid_t pid;
+            int job_id = -1;
+
+            if (cmdarr[1][0] == '%') {
+                job_id = atoi(cmdarr[1] + 1);
+                pid = get_pgid_by_job_id(job_id);
+                if (pid < 0) {
+                    printf("ICSH: bg %s: no such job\n", cmdarr[1]);
+                    return -1;
+                }
+            } else {
+                pid = atoi(cmdarr[1]);
+            }
+
+            if (kill(pid, SIGCONT) < 0) {
+                printf("ICSH: bg %d: job not found\n", pid);
+                return -1;
+            }
+
+            if (job_id > 0) {
+                set_job_status(job_id, 3);
+                print_job_status(job_id);
+            }
+
+            return 0;
+        }  
+    
+    return 1;
     }
-
-    //When user type "jobs", we must know if there is a job or not?
-    //just make a queue of processes first, make sure we know if it is available
-    //we are not pipelining
-    //know the first know the next
-    //when empty, tell user, it is empty
-    //when not empty, print it one by one
-    //we know that this queue has only one head... it is not a stack
-    //i think each job either can be store in job dynamic array and a queue
 }
-// void jobs_init(){
-//     //you have to be able to start the job every time a process is created
-// }
-// int bg(int i){
-//     //it will send signal "SIGCONT" to the first process
-//     //we iterate to next job at i where i start at 1
-//     //we know that each job has one running process at the surface
-// }
-// int fg(int i){
-//     //not only send signal to "SIGCONT"
-//     //fg also has tcsetpgrp(int fildes, pid_t pgid_id) which set tcsetpgrp(STDOUT_FILENO, getpid())
-// }
-// void suspension(){
-//     //CTRL+Z now suspend the process in a manner that the parent do not need to wait
-// }
-// void exit(){
-//     //we know that job should be emptied before leaving
-//     //we send sigkill to every job, hoping that it kills the jobs
-//     //then we exit with code 0
-// }
-void bgdone(){
-    waitpid(-1, NULL, WNOHANG);
+int fg_cmd(char** cmdarr, int n){
+    if(n>2){
+        if(strcmp(cmdarr[0],"fg")==0){
+            int status;
+            pid_t pid;
+            int job_id = -1;
+
+            if (cmdarr[1][0] == '%') {
+                job_id = atoi(cmdarr[1] + 1);
+                pid = get_pgid_by_job_id(job_id);
+                if (pid < 0) {
+                    printf("ICSH: fg %s: no such job\n", cmdarr[1]);
+                    return -1;
+                }
+            } else {
+                pid = atoi(cmdarr[1]);
+            }
+
+            if (kill(-pid, SIGCONT) < 0) {
+                printf("ICSH: fg %d: job not found\n", pid);
+                return -1;
+            }
+
+            tcsetpgrp(0, pid);
+
+            if (job_id > 0) {
+                set_job_status(job_id, 3);
+                print_job_status(job_id);
+                if (wait_for_job(job_id) >= 0) {
+                    remove_job(job_id);
+                }
+            } else {
+                wait_for_pid(pid);
+            }
+
+            signal(SIGTTOU, SIG_IGN);
+            tcsetpgrp(0, getpid());
+            signal(SIGTTOU, SIG_DFL);
+
+            return 0;
+        }  
+    
+    return 1;
+    }
+}
+int exitShell(char** givencmd, int n){
+    if(n!=0){
+        if(strcmp(givencmd[0],"exit")==0){
+            return 0;
+        }  
+    }
+    return 1;
 }
 
-int executeCommand(char* cmd, int status,int* ex, job** jobs, job* jfg){
-    int *n = realloc(NULL, sizeof(int));
-    char **givencmd = stringTokenizer(cmd,n);
-    char** redicmd;
+job* cmd_to_job(char* input){
+    job * newjob;
+    newjob->command = input;
+    newjob->first_process = initpro(input);
+    newjob->id = 0;
+    newjob->pgid = -1;
+    return newjob;
+}
+
+void check_zombie() {
+    int status, pid;
+    while ((pid = waitpid(-1, &status, WNOHANG|WUNTRACED|WCONTINUED)) > 0) {
+        if (WIFEXITED(status)) {
+            set_process_status(pid, 1);
+            *exitNo = WIFEXITED(status);
+        } else if (WIFSTOPPED(status)) {
+            set_process_status(pid, 4);
+            *exitNo = WIFSTOPPED(status);
+        } else if (WIFCONTINUED(status)) {
+            set_process_status(pid, 3);
+            *exitNo = WIFCONTINUED(status);
+        }
+
+        int job_id = get_job_id_by_pid(pid);
+        if (job_id > 0 && is_job_completed(job_id)) {
+            print_job_status(job_id);
+            remove_job(job_id);
+        }
+    }
+}
+
+int shellCommands(char**givencmd, int n){
+    
+    if(exitShell(givencmd, n)==0){
+        for (int i = 0; i < n; i++){ free(givencmd[i]);}
+        free(givencmd);
+        free(n);
+        exit(0);
+    } 
+    if(exitStatus(givencmd, n, exitNo)==0){
+        for (int i = 0; i < n; i++){ free(givencmd[i]);}
+        free(givencmd);
+        free(n);
+        return 0;
+    } 
+    if(jobs_cmd(givencmd,n)==0){
+        for (int i = 0; i < n; i++){ free(givencmd[i]);}
+        free(givencmd);
+        free(n);
+        return 0;
+    }
+    if(fg_cmd(givencmd,n)==0){
+        for (int i = 0; i < n; i++){ free(givencmd[i]);}
+        free(givencmd);
+        free(n);
+        return 0;
+    }
+    if(bg_cmd(givencmd,n)==0){
+        for (int i = 0; i < n; i++){ free(givencmd[i]);}
+        free(givencmd);
+        free(n);
+        return 0;
+    }
+    return 1;
+}
+
+int execute_process(job* container, process* exproc){
+    int n = exproc->argc;
+    char *cmd = container->command;
+    char **givencmd = exproc->argv;
+    char **redicmd;
     int redirecto = outputRed(givencmd,n);    
     int redirecti = inputRed(givencmd,n);
-    int bg = ampersandBG(givencmd, n);
-
+    int bg = ampersandBG(givencmd,n);
+            
+    if(shellCommands(givencmd, n)==0) return 0;
     //execute normally
-    pid_t pid = fork();
+    exproc->status = 0;
+    int status=0;
+    pid_t childpid = fork();
 
-    if (pid < -1) {
+    if (childpid < -1) {
             printf("Error, cannot fork\n");
-    } else if (pid == 0) {
+    } else if (childpid == 0) {
             printf("[C] I am the child\n");
+
+            signal(SIGINT, SIG_DFL);
+            // signal(SIGQUIT, SIG_DFL);
+            signal(SIGTSTP, SIG_DFL);
+            signal(SIGTTIN, SIG_DFL);
+            signal(SIGTTOU, SIG_DFL);
+            signal(SIGCHLD, SIG_DFL);
+
+            exproc->pid = getpid();
+            if (container->pgid > 0) {
+                setpgid(0, container->pgid);
+            } else {
+                container->pgid = exproc->pid;
+                setpgid(0, container->pgid);
+            }
             printf("My pgid is %d, my pid is %d\n", getpgid(getpid()), getpid());
 
-            // setpgid(0,0);
-            //gotta work with signal
-            signal(SIGTSTP, SIGTSTP);
-            signal(SIGCONT, SIGCONT);
-            signal(SIGINT, SIGINT);
-            // if(bg==0){
-            //     *n--;
-            // }
-            if(exitStatus(givencmd, n, ex)==0){
-                for (int i = 0; i < *n; i++){ free(givencmd[i]);}
-                free(givencmd);
-                free(n);
-                exit(0);
-            } 
-            if(jobs_cmd(givencmd,n, jobs)==0){
-                for (int i = 0; i < *n; i++){ free(givencmd[i]);}
-                free(givencmd);
-                free(n);
-                exit(0);
-            }
-            if((*n-redirecti)>1 && redirecti>0){
+            if((n-redirecti)>1 && redirecti>0){
                 redicmd = malloc(sizeof(char*)*(redirecti+1));
                     for (int i = 0; i < redirecti; i++){ 
                         redicmd[i] = givencmd[i];
@@ -236,23 +569,24 @@ int executeCommand(char* cmd, int status,int* ex, job** jobs, job* jfg){
                     if (got <=0) break;
                 }
                 
-            }else if((*n-redirecto)>1 && redirecto>0){
-                    int out;
-                    out = open (givencmd[redirecto+1], O_TRUNC | O_CREAT | O_WRONLY, 0666);
-                    if ((out <= 0))
-                    {
+            }else if((n-redirecto)>1 && redirecto>0){
+                //think of <> later
+                int out;
+                out = open (givencmd[redirecto+1], O_TRUNC | O_CREAT | O_WRONLY, 0666);
+                if ((out <= 0))
+                {
                     fprintf (stderr, "Couldn't open a file\n");
                     exit (errno);
-                    }
-                    redicmd = malloc(sizeof(char*)*(redirecto+1));
-                    for (int i = 0; i < redirecto; i++){ 
-                        redicmd[i] = givencmd[i];
-                    }
-                    redicmd[redirecto] = NULL;
-                    dup2 (out, 1);   
-                    close (out);
-                    if(fork()==0)
-                    execvp(redicmd[0], redicmd);
+                }
+                redicmd = malloc(sizeof(char*)*(redirecto+1));
+                for (int i = 0; i < redirecto; i++){ 
+                    redicmd[i] = givencmd[i];
+                }
+                redicmd[redirecto] = NULL;
+                dup2 (out, 1);   
+                close (out);
+                if(fork()==0)
+                execvp(redicmd[0], redicmd);
                 
             }else{
                 printf("NO REDIRECT\n");
@@ -261,60 +595,82 @@ int executeCommand(char* cmd, int status,int* ex, job** jobs, job* jfg){
             }
             
             printf("ICSH: command not found: %s\n", cmd);
-            for (int i = 0; i < *n; i++){ free(givencmd[i]);}
+            for (int i = 0; i < n; i++){ free(givencmd[i]);}
             free(givencmd);
             free(n);
             exit(9);
     } else {
-
-            process *mychild = initpro(pid, givencmd, status);
-            job_push(jobs, cmd, getpgid(getpid()), mychild);
+            exproc->pid = childpid;
+            if (container->pgid > 0) {
+                setpgid(childpid, container->pgid);
+            } else {
+                container->pgid = exproc->pid;
+                setpgid(childpid, container->pgid);
+            }
+            // process *mychild = initpro(pid, givencmd, status);
+            // job_push(jobs, cmd, getpgid(getpid()), mychild);
             printf("[P] I'm waiting for my child\n");
             printf("My pgid is %d, my pid is %d\n", getpgid(getpid()), getpid());
 
-            if(bg==1){
-                waitpid(pid, &status, NULL);
-                if (WIFEXITED(status))  {
-                int exit_status = WEXITSTATUS(status);
-                *ex = exit_status;         
-                printf("Exit status of the child was %d\n", exit_status); 
-                }
+            if (bg == 1) {
+                tcsetpgrp(0, container->pgid);
+                status = wait_for_job(container->id);
+                signal(SIGTTOU, SIG_IGN);
+                tcsetpgrp(0, getpid());
+                signal(SIGTTOU, SIG_DFL);
             }
-            else{
-                jobs_show(*jobs);
-                signal(SIGCHLD, bgdone);
-                if (WIFEXITED(status))  {
-                int exit_status = WEXITSTATUS(status);
-                *ex = exit_status;         
-                printf("FROM BG: Exit status of the child was %d\n", exit_status); 
-            }
-        }
+        
     }
 
-    for (int i = 0; i < *n; i++){ free(givencmd[i]);}
+    for (int i = 0; i < n; i++){ free(givencmd[i]);}
     free(givencmd);    
     free(n);
+}
+//mkae job run process bg or fg
+int execute_job(job* exjob){
+    process* p = exjob->first_process;
+    int n = p->argc;
+    char **givencmd = exjob->first_process->argv;
+    int bg = ampersandBG(givencmd, n);
+
+    check_zombie();
+    int job_id;
+    int status = 0;
+
+    job_id = insert_job(exjob);
+    status = execute_process(exjob, p);
+    
+    if(bg==1){
+        if(status>=0) remove_job(job_id);
+    } 
+    else{
+        print_processes_of_job(job_id);
+    }
+    return status;
 }
 
 int main(){
     int status; //exit?
-    int *exitNo = malloc(sizeof(int));
+    exitNo = malloc(sizeof(int));
     char *input;
-    job *jobs;
-    job *job_fg;
-    // char *path = strdup(getenv("PATH"));
-    // printf(path);
-    // free(path);
     signal(SIGTSTP, SIG_IGN); //fg is paused
     signal(SIGINT, SIG_IGN); //fg is gone
     while(1){
         printf("ICSH@6081035$>");
         input = inputString(stdin, 10); //a dynamic array
-        executeCommand(input,status, exitNo, &jobs, job_fg);
+        if (strlen(input) == 0){
+            check_zombie();
+            free(input);
+            continue;
+        }
+        job* toexecute = cmd_to_job(input);
+        status = execute_job(toexecute);
+        //no cmd mean nothing
+        // executeCommand(input,status, exitNo, &jobs, job_fg);
         free(input);
     }
     free(exitNo);
-    return 0;
+    exit(0);
 }
 
 
