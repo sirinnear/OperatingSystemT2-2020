@@ -1,0 +1,13 @@
+The job data structure comes from GNU.org and other websites.
+
+Constraints:
+1. This shell does not support complex command like bash
+such as "./program < input > output" yet.
+
+2. This shell cannot do cd.
+
+3. Rarely, the commands will not be found if the user input too many commands.
+
+4. When you kill with SIGKILL on a process, the jobs are oblivious to know that the process is killed, leaving a zombie job.
+
+5. Maximum number of jobs is 20, it can be increased in the source code.

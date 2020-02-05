@@ -300,7 +300,7 @@ int executeCommand(char* cmd, int status,int* ex, job** jobs, job* jfg){
             exit(9);
     } else {
             process *mychild = initpro(pid, givencmd, status);
-            job_push(jobs, cmd, getpgid(getpid()), mychild);
+            // job_push(jobs, cmd, getpgid(getpid()), mychild);
             printf("[P] I'm waiting for my child\n");
             
             if(bg==1){
@@ -312,7 +312,7 @@ int executeCommand(char* cmd, int status,int* ex, job** jobs, job* jfg){
                 }
             }
             else{
-                jobs_show(*jobs);
+                // jobs_show(*jobs);
                 waitpid(pid, &status, WNOHANG);
                 signal(SIGCHLD, bgdone);
                 if (WIFEXITED(status))  {

@@ -6,7 +6,7 @@
 #include<sys/wait.h>
 #include<unistd.h>
 #include<ctype.h>
-#include"job_queue.h"
+#include"jobs.h"
 #include <errno.h>
 #include <fcntl.h>
 
@@ -94,12 +94,7 @@ char** stringTokenizer(char* string, int* k){
 process *initpro(char* commands, int* argcount){
 
     process *newprocess = malloc(sizeof(process));
-    // printf("WAIT PROC? \n"); 
-
-    // int* argcount = realloc(NULL,sizeof(int));
-
     newprocess->argv = stringTokenizer(commands,argcount);
-    // printf("MADE PROC HAHA \n"); 
     newprocess->argc = argcount;
     newprocess->pid = -1;
     newprocess->status = 0;
@@ -282,6 +277,7 @@ int wait_for_job(int id) {
     int wait_pid = -1;
     int status = 0;
     wait_pid = waitpid(jobs[id]->pgid, &status, WUNTRACED);
+    /*The status of any child process*/
     if (WIFEXITED(status)) {
         set_process_status(wait_pid, 1);
     } else if (WIFSIGNALED(status)) {
@@ -295,6 +291,7 @@ int wait_for_job(int id) {
     return status;
 }
 
+/* This method is used when the user type echo $? */
 int exitStatus(char** cmdarr, int n, int* ex){
     if(strcmp(cmdarr[0],"echo")==0){
         if(n>=2){
@@ -308,28 +305,27 @@ int exitStatus(char** cmdarr, int n, int* ex){
     }
     return 1;
 }
-// ./idk > know > no
+
+/* This method is used to find '>' in user command*/
 int outputRed(char** cmdarr, int n){
     if(n<2) return 0;
-    // printf("size of %d\n", n);
 
     for (int i = 0; i < n; i++)
     {
         if(strcmp(cmdarr[i],">")==0){
-            // printf("let's redirect output at %d\n", i);
             return i;
         }
     }
     return 0;
 }
-//input occur before output
+
+/* This method is used to find '<' in user command*/
 int inputRed(char** cmdarr, int n){
     if(n<2) return 0;
     int i;
     for (i = 0; i < n; i++)
     {
         if(strcmp(cmdarr[i],"<")==0){
-            // printf("let's redirect input at %d\n", i);
             return i;
         }
     }
@@ -338,13 +334,14 @@ int inputRed(char** cmdarr, int n){
 int ampersandBG(char** cmdarr, int n){
     if(n>=2){
         if(strcmp(cmdarr[n-1],"&")==0){
-            // printf("running in background %d\n", n);
             cmdarr[n-1] = NULL;  
             return 0;
         } 
     }
     return 1;
 }
+
+/* This method is used to execute 'jobs' in user command*/
 int jobs_cmd(char** cmdarr, int n){
     if(n>0){
         if(strcmp(cmdarr[0],"jobs")==0){
@@ -360,6 +357,8 @@ int jobs_cmd(char** cmdarr, int n){
     
     return 1;
 }
+
+/* This method is used to execute 'bg %?' in user command*/
 int bg_cmd(char** cmdarr, int n){
     if(n>1){
         if(strcmp(cmdarr[0],"bg")==0){
@@ -393,6 +392,8 @@ int bg_cmd(char** cmdarr, int n){
     return 1;
     
 }
+
+/* This method is used to execute 'fg %?' in user command*/
 int fg_cmd(char** cmdarr, int n){
     if(n>1){
         if(strcmp(cmdarr[0],"fg")==0){
@@ -415,10 +416,11 @@ int fg_cmd(char** cmdarr, int n){
                 return -1;
             }
 
+            //Bring bg job to terminal
             tcsetpgrp(0, pid);
 
+            //Make sure that if job_id is 0, we still wait for it
             if (job_id > 0) {
-                //printf("BACK TO WORK!");
                 set_job_status(job_id, 3);
                 print_job_status(job_id);
                 if (wait_for_job(job_id) >= 0) {
@@ -428,6 +430,7 @@ int fg_cmd(char** cmdarr, int n){
                 wait_for_pid(pid);
             }
 
+            //Ignore the signal and handle it later to get access
             signal(SIGTTOU, SIG_IGN);
             tcsetpgrp(0, getpid());
             signal(SIGTTOU, SIG_DFL);
@@ -438,9 +441,22 @@ int fg_cmd(char** cmdarr, int n){
     return 1;
     
 }
+
+/* This method is used to receive 'exit' in user command, terminating all processes running in shell*/
 int exit_cmd(char** givencmd, int n){
     if(n!=0){
+        int pid;
         if(strcmp(givencmd[0],"exit")==0){
+            for (int i = 0; i < JOBSIZE; i++)
+            {
+                if(jobs[i] != NULL) pid = jobs[i]->first_process->pid;
+
+                if(pid != getpid() && pid > 0 && jobs[i] != NULL){
+                    int pid = jobs[i]->first_process->pid;
+                    kill(pid, SIGTERM);
+                    remove_job(get_job_id_by_pid(pid));
+                } 
+            }
             return 0;
         }  
     }
@@ -460,6 +476,8 @@ job* cmd_to_job(char* input, int* counter){
 
 void check_zombie() {
     int status, pid;
+
+    //Get all the zombie processes status
     while ((pid = waitpid(-1, &status, WNOHANG|WUNTRACED|WCONTINUED)) > 0) {
         if (WIFEXITED(status)) {
             set_process_status(pid, 1);
@@ -475,12 +493,12 @@ void check_zombie() {
         int job_id = get_job_id_by_pid(pid);
         if (job_id > 0 && is_job_completed(job_id)) {
             print_job_status(job_id);
-            // printf("ZOMBIE!!!!!!!!!!! KILLLLLLLLLLL!");
             remove_job(job_id);
         }
     }
 }
 
+/* This method is used to handle builtin commands*/
 int shellCommands(char**givencmd, int n){
     
     
@@ -512,20 +530,15 @@ int execute_process(job* container, process* exproc, int ro, int ri, int isbg){
     int redirecto = ro;    
     int redirecti = ri;
     int bg = isbg;
-    // printf("EXECUTING COMMAND %d\n", getpid());
-
-    // if(shellCommands(givencmd, n)==0) return 0;
-    //execute normally
     exproc->status = 0;
     int status=0;
     int fout;
     int saved_stdout;
 
-    //Save current stdout for use later
     saved_stdout = dup(1);
-    
+
+     //Output redirection on parent for builtin commands
     if((n-redirecto)>1 && redirecto>0){
-                //think of <> later
         fout = open (givencmd[redirecto+1], O_TRUNC | O_CREAT | O_WRONLY, 0666);
         if ((fout <= 0))
         {
@@ -539,7 +552,7 @@ int execute_process(job* container, process* exproc, int ro, int ri, int isbg){
     if(shellCommands(givencmd, n)==0){
          if((n-redirecto)>1 && redirecto>0){
             dup2(saved_stdout, 1);
-            close(saved_stdout);;
+            close(saved_stdout);
          } 
          *exitNo = 0;
          return 0;
@@ -550,15 +563,12 @@ int execute_process(job* container, process* exproc, int ro, int ri, int isbg){
     if (childpid < -1) {
             printf("Error, cannot fork\n");
     } else if (childpid == 0) {
-            // printf("[C] I am the child\n");
-
             signal(SIGINT, SIG_DFL);
             signal(SIGQUIT, SIG_DFL);
             signal(SIGTSTP, SIG_DFL);
             signal(SIGTTIN, SIG_DFL);
             signal(SIGTTOU, SIG_DFL);
             signal(SIGCHLD, SIG_DFL);
-            int isNotExecute = 0;
             exproc->pid = getpid();
             if (container->pgid > 0) {
                 setpgid(0, container->pgid);
@@ -566,8 +576,8 @@ int execute_process(job* container, process* exproc, int ro, int ri, int isbg){
                 container->pgid = exproc->pid;
                 setpgid(0, container->pgid);
             }
-            // printf("My pgid is %d, my pid is %d\n", getpgid(getpid()), getpid());
 
+            //Output redirection on child
             if((n-redirecti)>1 && redirecti>0){
                 redicmd = malloc(sizeof(char*)*(redirecti+1));
                     for (int i = 0; i < redirecti; i++){ 
@@ -589,15 +599,15 @@ int execute_process(job* container, process* exproc, int ro, int ri, int isbg){
                 dup2 (in, 0);
                 close (in);
                 execvp(redicmd[0], redicmd);
-                isNotExecute = 1;
                 while (1)
                 {
                     got = fread (buffer, 1, 1024, stdin);  
                     if (got <=0) break;
                 }
                 
+            //Input redirection on child
+
             }else if((n-redirecto)>1 && redirecto>0){
-                //think of <> later
                 int out;
                 out = open (givencmd[redirecto+1], O_TRUNC | O_CREAT | O_WRONLY, 0666);
                 if ((out <= 0))
@@ -613,13 +623,9 @@ int execute_process(job* container, process* exproc, int ro, int ri, int isbg){
                 dup2 (out, 1);   
                 close (out);
                 execvp(redicmd[0], redicmd);
-                // isNotExecute = 1;
 
             }else{
-                // printf("NO REDIRECT\n");
-
                 execvp(givencmd[0], givencmd);
-                // isNotExecute = 1;
 
             }
             
@@ -633,11 +639,9 @@ int execute_process(job* container, process* exproc, int ro, int ri, int isbg){
                 container->pgid = exproc->pid;
                 setpgid(childpid, container->pgid);
             }
-            // printf("[P] I'm waiting for my child\n");
-            // printf("My pgid is %d, my pid is %d\n", getpgid(getpid()), getpid());
 
             if (bg == 1) {
-                //printf("NO AMPERSAND")
+                //Same trick to fg, we don't wait for bg process
                 tcsetpgrp(0, container->pgid);
                 status = wait_for_job(container->id);
                 signal(SIGTTOU, SIG_IGN);
@@ -645,10 +649,9 @@ int execute_process(job* container, process* exproc, int ro, int ri, int isbg){
                 signal(SIGTTOU, SIG_DFL);
             }
     }
-    // printf("status exit %d", status);
     return status;
 }
-//mkae job run process bg or fg
+
 int execute_job(job* exjob){
     process* p = exjob->first_process;
     int *c = p->argc;
@@ -657,27 +660,19 @@ int execute_job(job* exjob){
     int redirecto = outputRed(givencmd,n);    
     int redirecti = inputRed(givencmd,n);
     int bg = ampersandBG(givencmd, n);
-    // printf("check zombies\n");
     check_zombie();
     int job_id;
     int status = 0;
 
     job_id = insert_job(exjob);
     latestjob = job_id;
-    // print_processes_of_job(job_id);
-    // if(shellCommands(givencmd, n)==0){
-        // printf("----------BUILT IN WORK------------");
-    // }else{
     if(exit_cmd(givencmd, n)==0){
-        // printf("NOO1O\n");
         exit(0);
     } 
     status = execute_process(exjob, p, redirecto, redirecti, bg);
-    // }
 
     if(bg==1 && status>=0){
         remove_job(job_id); 
-        //   printf("removed %d\n", job_id); 
     }else{
         print_processes_of_job(job_id);
     }
@@ -692,13 +687,13 @@ int main(){
     }
     int* argcount = malloc(sizeof(int));
     tokens = malloc(sizeof(char*));
-    signal(SIGTSTP, SIG_IGN); //fg is paused
-    signal(SIGINT, SIG_IGN); //fg is gone
+    signal(SIGTSTP, SIG_IGN); 
+    signal(SIGINT, SIG_IGN); 
     signal(SIGQUIT, SIG_IGN);
 
     while(1){
         printf("ICSH@6081035$>");
-        input = inputString(stdin, 10); //a dynamic array
+        input = inputString(stdin, 10);
         if (strlen(input) == 0){
             check_zombie();
             free(input);
@@ -706,8 +701,6 @@ int main(){
         }
         job* toexecute = cmd_to_job(input, argcount);
         *exitNo = execute_job(toexecute);
-        //no cmd mean nothing
-        // executeCommand(input,status, exitNo, &jobs, job_fg);
     }
 
     for (int i = 0; i < *argcount; i++){ free(tokens[i]);}
