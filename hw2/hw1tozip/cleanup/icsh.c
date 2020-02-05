@@ -131,7 +131,7 @@ job* get_job_by_id(int id) {
 }
 
 int get_pgid_by_job_id(int id) {
-    struct job *job = get_job_by_id(id);
+    job *job = get_job_by_id(id);
 
     if (job == NULL) {
         return -1;
@@ -218,7 +218,7 @@ int is_job_completed(int id) {
         return 0;
     }
 
-    struct process *proc;
+    process *proc;
     proc = jobs[id]->first_process;
     if (proc->status != 1) {
         return 0;
@@ -248,7 +248,7 @@ int set_job_status(int id, int status) {
     if (id > JOBSIZE || jobs[id] == NULL) {
         return -1;
     }
-    struct process *proc;
+    process *proc;
 
     proc = jobs[id]->first_process;
     if (proc->status != 1) {
@@ -400,7 +400,7 @@ int fg_cmd(char** cmdarr, int n){
             int job_id = -1;
 
             if (cmdarr[1][0] == '%') {
-                job_id = atoi(cmdarr[1] + 1);
+                job_id = atoi(cmdarr[1] + 1); 
                 pid = get_pgid_by_job_id(job_id);
                 if (pid < 0) {
                     printf("ICSH: fg %s: no such job\n", cmdarr[1]);
@@ -418,6 +418,7 @@ int fg_cmd(char** cmdarr, int n){
             tcsetpgrp(0, pid);
 
             if (job_id > 0) {
+                //printf("BACK TO WORK!");
                 set_job_status(job_id, 3);
                 print_job_status(job_id);
                 if (wait_for_job(job_id) >= 0) {
@@ -437,7 +438,7 @@ int fg_cmd(char** cmdarr, int n){
     return 1;
     
 }
-int exitShell(char** givencmd, int n){
+int exit_cmd(char** givencmd, int n){
     if(n!=0){
         if(strcmp(givencmd[0],"exit")==0){
             return 0;
@@ -482,7 +483,7 @@ void check_zombie() {
 
 int shellCommands(char**givencmd, int n){
     
-    if(exitShell(givencmd, n)==0){
+    if(exit_cmd(givencmd, n)==0){
         // printf("NOO1O\n");
         exit(0);
     } 
@@ -609,6 +610,7 @@ int execute_process(job* container, process* exproc, int ro, int ri, int isbg){
             // printf("My pgid is %d, my pid is %d\n", getpgid(getpid()), getpid());
 
             if (bg == 1) {
+                //printf("NO AMPERSAND")
                 tcsetpgrp(0, container->pgid);
                 status = wait_for_job(container->id);
                 signal(SIGTTOU, SIG_IGN);
