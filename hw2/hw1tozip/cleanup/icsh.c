@@ -483,10 +483,7 @@ void check_zombie() {
 
 int shellCommands(char**givencmd, int n){
     
-    if(exit_cmd(givencmd, n)==0){
-        // printf("NOO1O\n");
-        exit(0);
-    } 
+    
     if(exitStatus(givencmd, n, exitNo)==0){
         // printf("NOO2O\n");
         return 0;
@@ -521,6 +518,33 @@ int execute_process(job* container, process* exproc, int ro, int ri, int isbg){
     //execute normally
     exproc->status = 0;
     int status=0;
+    int fout;
+    int saved_stdout;
+
+    //Save current stdout for use later
+    saved_stdout = dup(1);
+    
+    if((n-redirecto)>1 && redirecto>0){
+                //think of <> later
+        fout = open (givencmd[redirecto+1], O_TRUNC | O_CREAT | O_WRONLY, 0666);
+        if ((fout <= 0))
+        {
+            fprintf (stderr, "Couldn't open a file\n");
+            exit (errno);
+        }
+        dup2 (fout, 1);   
+        close (fout);
+    }
+
+    if(shellCommands(givencmd, n)==0){
+         if((n-redirecto)>1 && redirecto>0){
+            dup2(saved_stdout, 1);
+            close(saved_stdout);;
+         } 
+         *exitNo = 0;
+         return 0;
+    }
+
     pid_t childpid = fork();
 
     if (childpid < -1) {
@@ -534,7 +558,7 @@ int execute_process(job* container, process* exproc, int ro, int ri, int isbg){
             signal(SIGTTIN, SIG_DFL);
             signal(SIGTTOU, SIG_DFL);
             signal(SIGCHLD, SIG_DFL);
-
+            int isNotExecute = 0;
             exproc->pid = getpid();
             if (container->pgid > 0) {
                 setpgid(0, container->pgid);
@@ -565,6 +589,7 @@ int execute_process(job* container, process* exproc, int ro, int ri, int isbg){
                 dup2 (in, 0);
                 close (in);
                 execvp(redicmd[0], redicmd);
+                isNotExecute = 1;
                 while (1)
                 {
                     got = fread (buffer, 1, 1024, stdin);  
@@ -587,13 +612,15 @@ int execute_process(job* container, process* exproc, int ro, int ri, int isbg){
                 redicmd[redirecto] = NULL;
                 dup2 (out, 1);   
                 close (out);
-                if(fork()==0)
                 execvp(redicmd[0], redicmd);
-                
+                // isNotExecute = 1;
+
             }else{
                 // printf("NO REDIRECT\n");
 
-                execvp(givencmd[0], givencmd); 
+                execvp(givencmd[0], givencmd);
+                // isNotExecute = 1;
+
             }
             
             printf("ICSH: command not found: %s\n", cmd);
@@ -638,14 +665,18 @@ int execute_job(job* exjob){
     job_id = insert_job(exjob);
     latestjob = job_id;
     // print_processes_of_job(job_id);
-    if(shellCommands(givencmd, n)==0){
+    // if(shellCommands(givencmd, n)==0){
         // printf("----------BUILT IN WORK------------");
-    }else{
-        status = execute_process(exjob, p, redirecto, redirecti, bg);
-    }
+    // }else{
+    if(exit_cmd(givencmd, n)==0){
+        // printf("NOO1O\n");
+        exit(0);
+    } 
+    status = execute_process(exjob, p, redirecto, redirecti, bg);
+    // }
 
     if(bg==1 && status>=0){
-          remove_job(job_id); 
+        remove_job(job_id); 
         //   printf("removed %d\n", job_id); 
     }else{
         print_processes_of_job(job_id);
@@ -663,6 +694,8 @@ int main(){
     tokens = malloc(sizeof(char*));
     signal(SIGTSTP, SIG_IGN); //fg is paused
     signal(SIGINT, SIG_IGN); //fg is gone
+    signal(SIGQUIT, SIG_IGN);
+
     while(1){
         printf("ICSH@6081035$>");
         input = inputString(stdin, 10); //a dynamic array
