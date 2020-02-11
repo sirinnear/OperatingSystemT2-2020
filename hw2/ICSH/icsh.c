@@ -43,12 +43,9 @@ char *inputString(FILE* fp, size_t size){
 }
 
 char** stringTokenizer(char* string, int* k){
-//This is where tokens come from
-    // printf("TOKENIZINzG\n");
 
     tokens = realloc(tokens, sizeof(char*));
     if(!string)return tokens;
-    // printf("TOKENIZINzG\n");
     int slen = strlen(string);
     int begin = 0;
     int argv = 1;
@@ -57,19 +54,15 @@ char** stringTokenizer(char* string, int* k){
     int len = 0;
     int isMore = 0;
     while(isspace(string[begin])){ begin++; };
-    // printf("start at %d\n",begin);
     tokens[toki] = realloc(NULL, sizeof(char)*dsize);
     for (int i = begin; i < slen; i++)
     {
         if(len==dsize){
-            // printf("GET BIGGER %d\n",i);
             tokens[toki] = realloc(tokens[toki], sizeof(char)*(dsize+=16));
         }
         if(isspace(string[i])){
-            // printf("Found whitespace at %d\n",i);
             isMore = 1;
             tokens[toki][len] = '\0';
-            // printf("%s\n",tokens[toki]);
             
         }else{
             if(isMore){
@@ -297,8 +290,6 @@ int exitStatus(char** cmdarr, int n, int* ex){
         if(n>=2){
             if(strcmp(cmdarr[1],"$?")==0){
                 printf("%d\n", *ex);
-                for (int i = 0; i < n; i++){ free(cmdarr[i]);}
-                free(cmdarr);
                 return 0;
         } 
         }
@@ -557,7 +548,10 @@ int execute_process(job* container, process* exproc, int ro, int ri, int isbg){
          *exitNo = 0;
          return 0;
     }
-
+    if((n-redirecto)>1 && redirecto>0){
+            dup2(saved_stdout, 1);
+            close(saved_stdout);
+    } 
     pid_t childpid = fork();
 
     if (childpid < -1) {
@@ -575,8 +569,37 @@ int execute_process(job* container, process* exproc, int ro, int ri, int isbg){
             } else {
                 container->pgid = exproc->pid;
                 setpgid(0, container->pgid);
-            }
+            }            
+            //Input and output redirection on child
+            if(((n-redirecto)>1 && redirecto>0) && ((n-redirecti)>1 && redirecti>0)){
+                redicmd = malloc(sizeof(char*)*(redirecti+1));
+                    for (int i = 0; i < redirecti; i++){ 
+                        redicmd[i] = givencmd[i];
+                    }
+                redicmd[redirecti] = NULL;
+                int out;
+                int in;
+                in = open(givencmd[redirecti+1], O_RDONLY);
+                out = open (givencmd[redirecto+1], O_TRUNC | O_CREAT | O_WRONLY, 0666);
 
+                if ((out <= 0))
+                {
+                    fprintf (stderr, "Couldn't open a file\n");
+                    exit (errno);
+                }
+                if ((in <= 0))
+                {
+                    fprintf (stderr, "Couldn't open a file\n");
+                    exit (errno);
+                }
+
+                dup2 (out, 1);   
+                dup2 (in, 0);
+                close (out);
+                close (in);
+                execvp(redicmd[0], redicmd);
+
+            }
             //Output redirection on child
             if((n-redirecti)>1 && redirecti>0){
                 redicmd = malloc(sizeof(char*)*(redirecti+1));
@@ -586,9 +609,6 @@ int execute_process(job* container, process* exproc, int ro, int ri, int isbg){
                 redicmd[redirecti] = NULL;
                 
                 int in;
-                size_t got;
-                char buffer[1024];
-
                 in = open(givencmd[redirecti+1], O_RDONLY);
 
                 if ((in <= 0))
@@ -599,15 +619,11 @@ int execute_process(job* container, process* exproc, int ro, int ri, int isbg){
                 dup2 (in, 0);
                 close (in);
                 execvp(redicmd[0], redicmd);
-                while (1)
-                {
-                    got = fread (buffer, 1, 1024, stdin);  
-                    if (got <=0) break;
                 }
                 
             //Input redirection on child
 
-            }else if((n-redirecto)>1 && redirecto>0){
+            if((n-redirecto)>1 && redirecto>0){
                 int out;
                 out = open (givencmd[redirecto+1], O_TRUNC | O_CREAT | O_WRONLY, 0666);
                 if ((out <= 0))
@@ -623,12 +639,8 @@ int execute_process(job* container, process* exproc, int ro, int ri, int isbg){
                 dup2 (out, 1);   
                 close (out);
                 execvp(redicmd[0], redicmd);
-
-            }else{
-                execvp(givencmd[0], givencmd);
-
             }
-            
+            execvp(givencmd[0], givencmd);            
             printf("ICSH: command not found: %s\n", cmd);
             exit(127);
     } else {
