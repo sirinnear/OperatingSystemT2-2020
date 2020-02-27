@@ -32,6 +32,8 @@ int date;
 int dummy;
 struct timeval start;	/* starting time */
 struct timeval end;	/* ending time */
+char *request = NULL;
+char *response = NULL;
 /**
 * This program should be invoked as "./server <socketnumber>", for
 * example, "./server 4342".
@@ -81,39 +83,47 @@ int main(int argc, char **argv)
     *
     *  5) Close the data socket associated with the connection
     */
+   printf("SERVER IS UP!");
     while(1) {
         // printf("Connected");
-        dispatch(networkpool, dispatch_runner, (void*) socket_listen);
-        if(counter == 1) {
-            // gettimeofday(&start, 0);	
-            // printf("Start at time 0\n");
-        }
-        if(counter % 1000 == 0 && counter > 0){
-            gettimeofday(&end, 0);	
-            // time = (end.tv_usec + end.tv_sec*1000000 - (start.tv_usec + (start.tv_sec*1000000)))/1000000;
-            printf("%ld tasks.\n", counter);
-
-            // printf("%ld tasks, at time %ld s.\n", counter, time);
-        } 
-        counter++;
-
-    }
-    //measure the rate
-    long rate = counter / time;
-    printf("The rate is, %ld", rate);
-}
-
-void dispatch_runner(void* arg){
-        char *request = NULL;
-        char *response = NULL;
-
-        int socket_talk = saccept((int) arg);  // step 1
+        
+        int socket_talk = saccept((int) socket_listen);  // step 1
         if (socket_talk < 0) {
             fprintf(stderr, "An error occured in the server; a connection\n");
             fprintf(stderr, "failed because of ");
             perror("");
             exit(1);
         }
+        dispatch(networkpool, dispatch_runner, (void*) socket_talk);
+
+        /* Uncomment to measure tasks done and time */
+        // if(counter == 1) {
+        //     gettimeofday(&start, 0);	
+        //     printf("Start at time 0\n");
+        // }
+        // if(counter % 500 == 0 && counter > 0){
+        //     gettimeofday(&end, 0);	
+        //     time = (end.tv_usec + end.tv_sec*1000000 - (start.tv_usec + (start.tv_sec*1000000)))/1000000;
+        //     // printf("%ld tasks.\n", counter);
+
+        //     printf("%ld tasks, at time %ld s.\n", counter, time);
+        // } 
+        // counter++;
+        // if(counter > 500000) break;
+    }
+    // //measure the rate
+    // long rate = counter / time;
+    // printf("The rate is, %ld", rate);
+    // clean up allocated memory, if any
+    destroy_threadpool(networkpool);
+    if (request != NULL)
+    free(request);
+    if (response != NULL)
+    free(response);
+}
+
+void dispatch_runner(void* arg){
+        int socket_talk = (int) arg;
         request = read_request(socket_talk);  // step 2
         if (request != NULL) {
             int response_length;
@@ -125,11 +135,7 @@ void dispatch_runner(void* arg){
         }
         close(socket_talk);  // step 5
         // printf("FINISHED!\n");
-        // clean up allocated memory, if any
-        if (request != NULL)
-        free(request);
-        if (response != NULL)
-        free(response);
+        
 }
 
 /**
