@@ -24,31 +24,18 @@ void dispatch_to_me(void *arg) {
 int main(int argc, char **argv) {
   threadpool tp;
 
-  tp = create_threadpool(1);
+  tp = create_threadpool(2);
 
-  fprintf(stdout, "**main** dispatch 3\n");
-  dispatch(tp, dispatch_to_me, (void *) 3);
-  fprintf(stdout, "**main** dispatch 6\n");
-  dispatch(tp, dispatch_to_me, (void *) 6);
-  fprintf(stdout, "**main** dispatch 7\n");
-  dispatch(tp, dispatch_to_me, (void *) 7);
-  fprintf(stdout, "**main** done first\n");
-    fprintf(stdout, "**main** dispatch 3\n");
-  dispatch(tp, dispatch_to_me, (void *) 3);
-  fprintf(stdout, "**main** dispatch 6\n");
-  dispatch(tp, dispatch_to_me, (void *) 6);
-  fprintf(stdout, "**main** dispatch 7\n");
-  dispatch(tp, dispatch_to_me, (void *) 7);
-  fprintf(stdout, "**main** done first\n");
-    fprintf(stdout, "**main** dispatch 3\n");
-  dispatch(tp, dispatch_to_me, (void *) 3);
-  fprintf(stdout, "**main** dispatch 6\n");
-  dispatch(tp, dispatch_to_me, (void *) 6);
-  fprintf(stdout, "**main** dispatch 7\n");
-  dispatch(tp, dispatch_to_me, (void *) 7);
-  fprintf(stdout, "**main** done first\n");
-  sleep(10);
-  fprintf(stdout, "\n\n");
+  // fprintf(stdout, "**main** dispatch 3\n");
+  // dispatch(tp, dispatch_to_me, (void *) 3);
+  // fprintf(stdout, "**main** dispatch 6\n");
+  // dispatch(tp, dispatch_to_me, (void *) 6);
+  // fprintf(stdout, "**main** dispatch 7\n");
+  // dispatch(tp, dispatch_to_me, (void *) 7);
+  // fprintf(stdout, "**main** done first\n");
+
+  // sleep(10);
+  // fprintf(stdout, "\n\n");
 
   fprintf(stdout, "**main** dispatch 3\n");
   dispatch(tp, dispatch_to_me, (void *) 3);
@@ -58,7 +45,9 @@ int main(int argc, char **argv) {
   dispatch(tp, dispatch_to_me, (void *) 7);
 
   fprintf(stdout, "**main done second\n");
-  sleep(20);
+  sleep(10);
+  destroy_threadpool(tp);
+  printf("DEAD LA!! \n");
   exit(-1);
 }
 

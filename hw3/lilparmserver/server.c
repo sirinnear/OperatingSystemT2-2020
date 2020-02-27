@@ -28,8 +28,8 @@ char *read_request(int fd);
 char *process_request(char *request, int *response_length);
 void  send_response(int fd, char *response, int response_length);
 void dispatch_runner(void* arg);
-long counter;
 int date;
+int dummy;
 struct timeval start;	/* starting time */
 struct timeval end;	/* ending time */
 /**
@@ -43,17 +43,20 @@ int main(int argc, char **argv)
     int  socket_listen;
     int  socket_talk;
     threadpool networkpool;
-    if (argc != 3)
+    if (argc != 4)
     {
         fprintf(stderr, "(SERVER): Invoke as  './server socknum poolsize'\n");
         fprintf(stderr, "(SERVER): for example, './server 4434 2'\n");
         exit(-1);
     }
+    long counter = 0;
+    long time = 0;
 
     /*
     * Set up the 'listening socket'.  This establishes a network
     * IP_address:port_number that other programs can connect with.
     */
+    dummy = atoi(argv[3]);
     int poolsize = atoi(argv[2]);
     socket_listen = setup_listen(argv[1]);
     networkpool = create_threadpool(poolsize);
@@ -81,7 +84,23 @@ int main(int argc, char **argv)
     while(1) {
         // printf("Connected");
         dispatch(networkpool, dispatch_runner, (void*) socket_listen);
+        if(counter == 1) {
+            // gettimeofday(&start, 0);	
+            // printf("Start at time 0\n");
+        }
+        if(counter % 1000 == 0 && counter > 0){
+            gettimeofday(&end, 0);	
+            // time = (end.tv_usec + end.tv_sec*1000000 - (start.tv_usec + (start.tv_sec*1000000)))/1000000;
+            printf("%ld tasks.\n", counter);
+
+            // printf("%ld tasks, at time %ld s.\n", counter, time);
+        } 
+        counter++;
+
     }
+    //measure the rate
+    long rate = counter / time;
+    printf("The rate is, %ld", rate);
 }
 
 void dispatch_runner(void* arg){
@@ -103,19 +122,9 @@ void dispatch_runner(void* arg){
             if (response != NULL) {
                 send_response(socket_talk, response, response_length);  // step 4
             }
-            counter++;
-        if(counter ==1) {
-            gettimeofday(&start, 0);	
-            printf("Start at time 0");
-        }
-        if(counter % 1000 == 0){
-            gettimeofday(&end, 0);	
-            long time = (end.tv_usec + end.tv_sec*1000000 - (start.tv_usec + (start.tv_sec*1000000)));
-            printf("%ld tasks, at time %ld us.\n", counter, time);
-        } 
         }
         close(socket_talk);  // step 5
-        
+        // printf("FINISHED!\n");
         // clean up allocated memory, if any
         if (request != NULL)
         free(request);
@@ -168,7 +177,7 @@ char *read_request(int fd) {
 * This function is thread-safe.
 */
 
-#define NUM_LOOPS 1
+#define NUM_LOOPS 0
 
 char *process_request(char *request, int *response_length) {
     char *response = (char *) malloc(RESPONSE_SIZE*sizeof(char));
@@ -179,7 +188,7 @@ char *process_request(char *request, int *response_length) {
     for (i=0; i<RESPONSE_SIZE; i++)
     response[i] = request[i%REQUEST_SIZE];
 
-    for (j=0; j<NUM_LOOPS; j++) {
+    for (j=0; j<NUM_LOOPS+dummy; j++) {
         for (i=0; i<RESPONSE_SIZE; i++) {
             char swap;
 
