@@ -11,7 +11,7 @@
 #include <errno.h>
 #include "threadpool.h"
 
-#define TASKS 1000
+#define TASKS 100
 
 extern int errno;
 
@@ -26,7 +26,7 @@ void dispatch_to_me(void *arg) {
 int main(int argc, char **argv) {
   threadpool tp;
 
-  tp = create_threadpool(20);
+  tp = create_threadpool(2);
   if(!tp)
       return 1;
 

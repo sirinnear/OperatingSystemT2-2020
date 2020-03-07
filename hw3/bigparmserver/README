@@ -23,3 +23,12 @@ This directory contains the following files:
                   needing to understand how to create and manipulate
                   network sockets.  Feel free to read the code in here
                   if you're curious, though.
+
+SERVER TEST PROCEDURE:
+1. Run the server
+  ./server 4324 POOLSIZE NUMROW
+2. In zsh, I used this command to run test
+  repeat TIMES {./client localhost 4322 &}.
+2.1. Provided run_test.sh, this script will do the same to the command above.
+  ./run_test SERVER PORT NUMCLIENTS
+3. SIGINT on server, will stop the server.

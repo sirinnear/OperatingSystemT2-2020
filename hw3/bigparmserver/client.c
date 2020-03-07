@@ -44,7 +44,7 @@ int main(int argc, char **argv) {
     // printf("HELLO! SERVER");
 
     // open up a connection to the server
-    if ((socket_talk = sconnect(argv[1], argv[2])) < 0) {
+    while ((socket_talk = sconnect(argv[1], argv[2])) < 0) {
       perror("(CLIENT): sconnect");
       exit(1);
     }

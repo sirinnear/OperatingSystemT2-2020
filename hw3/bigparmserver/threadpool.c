@@ -12,10 +12,15 @@
 #include "threadpool.h"
 
 // A trick for C programming, comment the line below to enter normal mode.
-#define DEBUG 0 
+// #define DEBUG 0 
 // Assume we have 200 threadpool, we create a queue that will satisfy the size of it.
 #define QUEUE_SIZE 200 
 
+// Worker will collect their own task!
+typedef struct {
+    void (*function)(void *);
+    void *argument;
+} worker_task;
 // _threadpool is the internal threadpool structure that is
 // cast to type "threadpool" before it given out to callers
 typedef struct _threadpool_st {
@@ -40,11 +45,6 @@ typedef struct _threadpool_st {
 
 } _threadpool;
 
-// Worker will collect their own task!
-typedef struct {
-    void (*function)(void *);
-    void *argument;
-} worker_task;
 
 /* DONE */
 void *worker_thread(void *args) {
@@ -58,6 +58,8 @@ void *worker_thread(void *args) {
     while (1) {
 
         pthread_cond_signal(&pool->pool_busycv);
+        pthread_cond_signal(&pool->pool_queuecv);
+
         pthread_mutex_lock(&pool->pthread_locks);
         pool->pool_idle++;
 
@@ -75,6 +77,7 @@ void *worker_thread(void *args) {
         //Make sure the head will loop within the queue
         pool->head = (pool->head + 1) % pool->Q_size;
         pool->pool_idle--;
+        pool->tasks--;
 
         // pthread_cond_signal(&pool->pool_runcv);
 
@@ -84,12 +87,11 @@ void *worker_thread(void *args) {
         
     }
 #ifdef DEBUG
-    printf("Thread %ld down", pthread_self());
+    printf("Thread %ld down\n", pthread_self());
 #endif
 
-    pool->pool_nthreads--;
+    pool->pool_idle--;
     pthread_mutex_unlock(&pool->pthread_locks);
-    pthread_exit(NULL);
     return NULL;
 }
 
@@ -133,34 +135,30 @@ threadpool create_threadpool(int num_threads_in_pool) {
   return (threadpool) pool;
 }
 
-/* NOT DONE */
+/* DONE */
 
 void dispatch(threadpool from_me, dispatch_fn dispatch_to_here, void *arg) {
   _threadpool *pool = (_threadpool *) from_me;
+  int next;
   if( pool->shutdown == 1) return;
 
   if(pool == NULL) return;
   pthread_mutex_lock(&pool->pthread_locks);
+  next = (pool->tail +1) % pool->Q_size;
 
-  while(pool->pool_idle == 0 || pool->tasks > 0){
-    //don't signal yet
-    if( pool->shutdown == 1) return;
-    pthread_cond_wait(&pool->pool_runcv, &pool->pthread_locks);
-    break;
-    // printf("POOL : BUSY AF\n");
-  }
-  pool->func = dispatch_to_here;
-  pool->args = arg;
-  pool->tasks++;
-  pool->received = 1;
-  pthread_cond_signal(&pool->pool_busycv);
-  pool->pool_idle--;
-
-  while(pool->received == 1){
-    pthread_cond_wait(&pool->pool_runcv, &pool->pthread_locks);
+  while(pool->tasks == pool->Q_size){
+#ifdef DEBUG
+    printf("POOL : TOO BUSY IN QUEUE\n");
+#endif
+    pthread_cond_wait(&pool->pool_queuecv, &pool->pthread_locks);
   }
   if( pool->shutdown == 1) return;
 
+  pool->queue[pool->tail].function = dispatch_to_here;
+  pool->queue[pool->tail].argument = arg;
+  pool->tail = next;
+  pool->tasks++;
+  pthread_cond_signal(&pool->pool_busycv);
   pthread_mutex_unlock(&pool->pthread_locks);
 
 }

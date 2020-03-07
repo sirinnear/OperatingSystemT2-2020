@@ -21,6 +21,7 @@
 #include "common.h"
 #include "threadpool.c"
 
+
 extern int errno;
 
 int   setup_listen(char *socketNumber);
@@ -40,17 +41,18 @@ threadpool networkpool;
 * example, "./server 4342 32 100000".
 */
 void server_close(int signum){
-  printf("SERVER IS SHUTTING DOWN!\n");
-  shutdown = 1;
-//   abandon_command(networkpool);
-    destroy_threadpool(networkpool);
+#ifdef DEBUG
+    printf("SERVER IS SHUTTING DOWN!\n");
+#endif
+    shutdown = 1;
+    // clean up allocated memory, if any
 }
 
 int main(int argc, char **argv)
 {
     char buf[1000];
-    int  socket_listen;
-    int  socket_talk;
+    volatile int  socket_listen;
+    volatile int  socket_talk;
     if (argc != 4)
     {
         fprintf(stderr, "(SERVER): Invoke as  './server socknum poolsize NUMROW'\n");
@@ -67,8 +69,11 @@ int main(int argc, char **argv)
     dummy = atoi(argv[3]);
     int poolsize = atoi(argv[2]);
 
+    /* For the sake of humanity, let's limit the tasks*/
+    int limit_tasks = 25000;
     socket_listen = setup_listen(argv[1]);
     networkpool = create_threadpool(poolsize);
+
     // printf("The threadpool size is %d", poolsize);
     
     /*
@@ -91,8 +96,9 @@ int main(int argc, char **argv)
     *  5) Close the data socket associated with the connection
     */
    signal(SIGINT, server_close);
-
+#ifdef DEBUG
    printf("SERVER IS UP!");
+#endif
     while(1) {
         // printf("Connected");
         if(shutdown == 1) break;
@@ -104,57 +110,47 @@ int main(int argc, char **argv)
             perror("");
             exit(1);
         }
-        // printf("WAITING..\n");
-        // printf("%d\n",socket_talk);
+#ifdef DEBUG
+        printf("WAITING..\n");
+        printf("%ld tasks, at time %ld s.\n", counter, time);
+#endif
         dispatch(networkpool, dispatch_runner, (void*) socket_talk);
-        // dispatch(networkpool, dispatch_runner, (void*) socket_listen);
 
         /* Uncomment to measure tasks done and time */
-        if(counter == 1) {
+        if(counter == 0) {
             gettimeofday(&start, 0);	
             printf("Start at time 0\n");
         }
         if(counter % 500 == 0 && counter > 0){
             gettimeofday(&end, 0);	
-            time = (end.tv_usec + end.tv_sec*1000000 - (start.tv_usec + (start.tv_sec*1000000)))/1000000;
-            // printf("%ld tasks.\n", counter);
-
+            time = end.tv_sec - start.tv_sec;
             printf("%ld tasks, at time %ld s.\n", counter, time);
+            // usleep(4000);
         } 
-        // close(socket_talk);  // step 5
-        // socket_listen = setup_listen(argv[1]);
 
         counter++;
-        // if(counter > 500000) break;
+        if(counter == limit_tasks) break;
     }
     // //measure the rate
-    // long rate = counter / time;
-    // printf("The rate is, %ld", rate);
-    // clean up allocated memory, if any
-
+    time = (end.tv_sec - start.tv_sec) * 1000.0;
+    time += (end.tv_usec - start.tv_usec) / 1000.0;
+    double rate = ((double) counter)*1000 / time;
+    printf("The rate is, %f", rate);
+    if(shutdown == 0) destroy_threadpool(networkpool);
     close(socket_listen);
-    // exit(0);
+    exit(0);
 }
 
 void dispatch_runner(void* arg){
     char *request = NULL;
     char *response = NULL;
     int socket_talk = (int) arg;
-    // int socket_talk = saccept((int) arg);  // step 1
-    //     if (socket_talk < 0) {
-    //         fprintf(stderr, "An error occured in the server; a connection\n");
-    //         fprintf(stderr, "failed because of ");
-    //         perror("");
-    //         exit(1);
-    //     }
     request = read_request(socket_talk);  // step 2
         if (request != NULL) {
             int response_length;
-            // printf("HI USER!");
             response = process_request(request, &response_length);  // step 3
             if (response != NULL) {
                 send_response(socket_talk, response, response_length);  // step 4
-                // printf("Sent\n");
             }
         }
     if (request != NULL)
@@ -162,7 +158,6 @@ void dispatch_runner(void* arg){
     if (response != NULL)
     free(response);
     close(socket_talk);  // step 5
-            // printf("FINISHED!\n");
 }
 
 /**
