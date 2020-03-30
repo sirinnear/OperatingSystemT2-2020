@@ -321,7 +321,7 @@ int main(int argc, char** argv){
     */
     free_frame_table(frame_table);
     fclose(trace_file);
-    printf("Total page fault is %ld.", page_fault_counter);
+    printf("%ld\n", page_fault_counter);
 }
 
 int ReadLine(char *buff, int size, FILE *fp)
