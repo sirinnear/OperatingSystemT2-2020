@@ -4,8 +4,6 @@
 #include <string.h>
 #include <math.h>
 
-#include "page_table.h"
-
 // #define DEBUG = 0
 
 #define VALID = 0
